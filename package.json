@@ -1,6 +1,6 @@
 {
   "name": "homebridge-inception-custom",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Custom Homebridge plugin for Inner Range Inception",
   "main": "index.js",
   "keywords": ["homebridge-plugin"],
