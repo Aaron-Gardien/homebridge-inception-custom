@@ -83,6 +83,8 @@ class InceptionAccessory {
   }
 
   authenticate(callback) {
+    this.log('[INFO] Authenticating with Inception API...');
+
     const options = {
       url: `${this.apiBaseUrl}/authentication/login`,
       method: 'POST',
@@ -91,12 +93,20 @@ class InceptionAccessory {
         Password: this.config.password
       }
     };
+
     request(options, (error, response, body) => {
-      if (error || response.statusCode !== 200) {
-        this.log('Authentication failed', error);
+      if (error) {
+        this.log('[ERROR] Authentication request failed:', error);
         return callback(error);
       }
+
+      if (response.statusCode !== 200 || !body || !body.session_id) {
+        this.log(`[ERROR] Authentication failed! Status Code: ${response.statusCode}, Response: ${JSON.stringify(body)}`);
+        return callback(new Error('Authentication failed'));
+      }
+
       this.authToken = body.session_id;
+      this.log(`[INFO] Authentication successful! Token: ${this.authToken}`);
       callback(null);
     });
   }
