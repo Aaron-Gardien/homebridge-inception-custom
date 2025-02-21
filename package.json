@@ -1,16 +1,17 @@
 {
   "name": "homebridge-inception-custom",
   "version": "1.0.10",
-  "description": "Custom Homebridge plugin for Inner Range Inception",
+  "description": "Homebridge plugin for Inner Range Inception alarm system",
   "main": "index.js",
-  "keywords": ["homebridge-plugin"],
+  "keywords": ["homebridge-plugin", "inception", "alarm", "security"],
   "engines": {
     "node": ">=14.0.0",
     "homebridge": ">=1.0.0"
   },
   "dependencies": {
-    "request": "^2.88.2"
+    "request": "^2.88.2",
+    "ws": "^8.11.0"
   },
-  "author": "Aaron Gardien",
+  "author": "AV Booth",
   "license": "MIT"
 }
