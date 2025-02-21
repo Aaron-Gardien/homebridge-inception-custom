@@ -73,5 +73,5 @@ class InceptionAccessory {
 }
 
 module.exports = (homebridge) => {
-  homebridge.registerAccessory('homebridge-inception', 'InceptionAlarm', InceptionAccessory);
+  homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAccessory);
 };
