@@ -28,8 +28,13 @@ class InceptionAccessory {
 
   getAlarmState(callback) {
     if (!this.authToken) {
-        this.log('[WARNING] No authentication token. Attempting to re-authenticate...');
-        return this.authenticate(() => this.getAlarmState(callback));
+        this.log('[WARNING] No authentication token. Attempting to authenticate...');
+        return this.authenticate((err) => {
+            if (err) {
+                return callback(err);
+            }
+            this.getAlarmState(callback); // Retry after authentication
+        });
     }
 
     request.get({
@@ -37,7 +42,18 @@ class InceptionAccessory {
         headers: { Cookie: this.authToken }, // Use session cookie
         json: true
     }, (error, response, body) => {
-        if (error || response.statusCode !== 200 || !body) {
+        if (error || response.statusCode === 401) { // Handle expired sessions
+            this.log('[WARNING] Session expired. Re-authenticating...');
+            this.authToken = null; // Clear invalid session
+            return this.authenticate((err) => {
+                if (err) {
+                    return callback(err);
+                }
+                this.getAlarmState(callback); // Retry after re-authentication
+            });
+        }
+
+        if (response.statusCode !== 200 || !body) {
             this.log('[ERROR] Failed to fetch alarm state:', error || response.statusCode);
             return callback(error || new Error('Invalid response from API'));
         }
@@ -66,6 +82,7 @@ class InceptionAccessory {
     });
 }
 
+
   setAlarmState(value, callback) {
     const arm = value === Characteristic.SecuritySystemTargetState.AWAY_ARM;
     request.post({
@@ -82,40 +99,47 @@ class InceptionAccessory {
   }
 
   authenticate(callback) {
+    if (this.authToken) {
+        this.log('[INFO] Reusing existing session token.');
+        return callback(null);
+    }
+
     this.log('[INFO] Authenticating with Inception API...');
 
     const options = {
-      url: `${this.apiBaseUrl}/authentication/login`,
-      method: 'POST',
-      json: {
-        Username: this.config.username,
-        Password: this.config.password
-      }
+        url: `${this.apiBaseUrl}/authentication/login`,
+        method: 'POST',
+        json: {
+            Username: this.config.username,
+            Password: this.config.password
+        }
     };
 
     request(options, (error, response, body) => {
-      if (error) {
-        this.log('[ERROR] Authentication request failed:', error);
-        return callback(error);
-      }
+        if (error) {
+            this.log('[ERROR] Authentication request failed:', error);
+            return callback(error);
+        }
 
-      if (response.statusCode !== 200 || !body || body.Response.Result !== "Success") {
-        this.log(`[ERROR] Authentication failed! Status Code: ${response.statusCode}, Response: ${JSON.stringify(body)}`);
-        return callback(new Error('Authentication failed'));
-      }
+        if (response.statusCode !== 200 || !body || body.Response.Result !== "Success") {
+            this.log(`[ERROR] Authentication failed! Status Code: ${response.statusCode}, Response: ${JSON.stringify(body)}`);
+            return callback(new Error('Authentication failed'));
+        }
 
-      // Extract session cookie from response headers
-      const setCookieHeader = response.headers['set-cookie'];
-      if (!setCookieHeader || setCookieHeader.length === 0) {
-        this.log('[ERROR] No session cookie received!');
-        return callback(new Error('No session cookie received'));
-      }
+        // Extract session cookie from response headers
+        const setCookieHeader = response.headers['set-cookie'];
+        if (!setCookieHeader || setCookieHeader.length === 0) {
+            this.log('[ERROR] No session cookie received!');
+            return callback(new Error('No session cookie received'));
+        }
 
-      this.authToken = setCookieHeader[0].split(';')[0]; // Extract only the cookie value
-      this.log(`[INFO] Authentication successful! Cookie: ${this.authToken}`);
-      callback(null);
+        this.authToken = setCookieHeader[0].split(';')[0]; // Extract only the cookie value
+        this.log(`[INFO] Authentication successful! Session Cookie: ${this.authToken}`);
+
+        callback(null);
     });
 }
+
 
 
   getServices() {
