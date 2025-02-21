@@ -37,41 +37,35 @@ class InceptionAccessory {
         });
     }
 
-    request.get({
-        url: `${this.apiBaseUrl}/control/area`,
-        headers: { "X-User-ID": this.authToken }, // Pass UserID in request header
-        json: true
-    }, (error, response, body) => {
+    var options = {
+        'method': 'GET',
+        'url': this.apiBaseUrl + '/control/area',
+        'headers': {
+            'Accept': 'application/json',
+            'X-User-ID': this.authToken  // Pass UserID as authentication
+        }
+    };
+
+    request(options, (error, response, body) => {
         if (error) {
             this.log('[ERROR] Failed to fetch alarm state:', error);
             return callback(error);
         }
 
-        if (response.statusCode === 401) { // Handle unauthorized errors
-            this.log('[WARNING] Session expired. Re-authenticating...');
-            this.authToken = null; // Clear invalid session
-            return this.authenticate((err) => {
-                if (err) {
-                    return callback(err);
-                }
-                this.getAlarmState(callback); // Retry after re-authentication
-            });
+        let parsedBody;
+        try {
+            parsedBody = JSON.parse(body);
+        } catch (e) {
+            this.log('[ERROR] Failed to parse API response:', e);
+            return callback(new Error('Invalid API response'));
         }
 
-        if (response.statusCode !== 200 || !body) {
-            this.log('[ERROR] Invalid response from API:', response.statusCode);
-            return callback(new Error('Invalid response from API'));
-        }
-
-        // Debugging: Log the full API response
-        this.log('[DEBUG] API Response:', JSON.stringify(body, null, 2));
-
-        if (!body.Areas || !Array.isArray(body.Areas) || body.Areas.length === 0) {
+        if (!parsedBody.Areas || !Array.isArray(parsedBody.Areas) || parsedBody.Areas.length === 0) {
             this.log('[ERROR] Unexpected API response format: Missing Areas');
             return callback(new Error('Invalid API response format'));
         }
 
-        const isArmed = body.Areas[0].Armed;
+        const isArmed = parsedBody.Areas[0].Armed;
         if (typeof isArmed !== 'boolean') {
             this.log('[ERROR] Missing "Armed" status in API response.');
             return callback(new Error('Missing Armed status in API response'));
@@ -89,60 +83,96 @@ class InceptionAccessory {
 
 
 
-  setAlarmState(value, callback) {
-    const arm = value === Characteristic.SecuritySystemTargetState.AWAY_ARM;
-    request.post({
-      url: `${this.apiBaseUrl}/control/area/${this.config.areaId}/activity`,
-      headers: { Cookie: `LoginSessId=${this.authToken}` },
-      json: { Type: 'ControlArea', AreaControlType: arm ? 'Arm' : 'Disarm' }
-    }, (error, response) => {
-      if (error || response.statusCode !== 200) {
-        this.log('Error setting alarm state', error);
-        return callback(error);
-      }
-      callback(null);
-    });
+
+setAlarmState(value, callback) {
+  if (!this.authToken) {
+      this.log('[WARNING] No authentication token. Attempting to authenticate...');
+      return this.authenticate((err) => {
+          if (err) {
+              return callback(err);
+          }
+          this.setAlarmState(value, callback); // Retry after authentication
+      });
   }
+
+  const arm = value === Characteristic.SecuritySystemTargetState.AWAY_ARM;
+  var options = {
+      'method': 'POST',
+      'url': this.apiBaseUrl + `/control/area/${this.config.areaId}/activity`,
+      'headers': {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'X-User-ID': this.authToken // Use UserID for authentication
+      },
+      body: JSON.stringify({
+          "Type": "ControlArea",
+          "AreaControlType": arm ? "Arm" : "Disarm"
+      })
+  };
+
+  request(options, (error, response, body) => {
+      if (error) {
+          this.log('[ERROR] Error setting alarm state:', error);
+          return callback(error);
+      }
+
+      let parsedBody;
+      try {
+          parsedBody = JSON.parse(body);
+      } catch (e) {
+          this.log('[ERROR] Failed to parse API response:', e);
+          return callback(new Error('Invalid API response'));
+      }
+
+      if (parsedBody.Response.Result !== 'Success') {
+          this.log(`[ERROR] API error: ${parsedBody.Response.Message}`);
+          return callback(new Error('Failed to update alarm state'));
+      }
+
+      this.log(`[INFO] Successfully set alarm state to: ${arm ? 'Armed' : 'Disarmed'}`);
+      callback(null);
+  });
+}
+
 
   authenticate(callback) {
     if (this.authToken) {
-        this.log('[INFO] Reusing existing authentication token.');
+        this.log('[INFO] Reusing existing UserID.');
         return callback(null);
     }
 
     this.log('[INFO] Authenticating with Inception API...');
 
-    const options = {
-        url: `${this.apiBaseUrl}/authentication/login`,
-        method: 'POST',
-        json: {
-            Username: this.config.username,
-            Password: this.config.password
-        }
+    var options = {
+        'method': 'POST',
+        'url': this.apiBaseUrl + '/authentication/login',
+        'headers': {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            "Username": this.config.username,
+            "Password": this.config.password
+        })
     };
 
-    request(options, (error, response, body) => {
+    request(options, (error, response) => {
         if (error) {
             this.log('[ERROR] Authentication request failed:', error);
             return callback(error);
         }
 
-        if (response.statusCode !== 200 || !body || body.Response.Result !== "Success") {
-            this.log(`[ERROR] Authentication failed! Status Code: ${response.statusCode}, Response: ${JSON.stringify(body)}`);
-            return callback(new Error('Authentication failed'));
-        }
-
-        if (!body.UserID) {
+        let temp = JSON.parse(response.body);
+        if (!temp.UserID) {
             this.log('[ERROR] No UserID received from API!');
             return callback(new Error('No UserID received from API'));
         }
 
-        this.authToken = body.UserID;
+        this.authToken = temp.UserID;
         this.log(`[INFO] Authentication successful! UserID: ${this.authToken}`);
-
         callback(null);
     });
 }
+
 
 
 
