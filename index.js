@@ -42,7 +42,12 @@ class InceptionAccessory {
         headers: { "X-User-ID": this.authToken }, // Pass UserID in request header
         json: true
     }, (error, response, body) => {
-        if (error || response.statusCode === 401) { // Handle unauthorized errors
+        if (error) {
+            this.log('[ERROR] Failed to fetch alarm state:', error);
+            return callback(error);
+        }
+
+        if (response.statusCode === 401) { // Handle unauthorized errors
             this.log('[WARNING] Session expired. Re-authenticating...');
             this.authToken = null; // Clear invalid session
             return this.authenticate((err) => {
@@ -54,8 +59,8 @@ class InceptionAccessory {
         }
 
         if (response.statusCode !== 200 || !body) {
-            this.log('[ERROR] Failed to fetch alarm state:', error || response.statusCode);
-            return callback(error || new Error('Invalid response from API'));
+            this.log('[ERROR] Invalid response from API:', response.statusCode);
+            return callback(new Error('Invalid response from API'));
         }
 
         // Debugging: Log the full API response
@@ -83,6 +88,7 @@ class InceptionAccessory {
 }
 
 
+
   setAlarmState(value, callback) {
     const arm = value === Characteristic.SecuritySystemTargetState.AWAY_ARM;
     request.post({
@@ -99,6 +105,11 @@ class InceptionAccessory {
   }
 
   authenticate(callback) {
+    if (this.authToken) {
+        this.log('[INFO] Reusing existing authentication token.');
+        return callback(null);
+    }
+
     this.log('[INFO] Authenticating with Inception API...');
 
     const options = {
@@ -121,7 +132,6 @@ class InceptionAccessory {
             return callback(new Error('Authentication failed'));
         }
 
-        // Store UserID instead of a session cookie
         if (!body.UserID) {
             this.log('[ERROR] No UserID received from API!');
             return callback(new Error('No UserID received from API'));
@@ -129,9 +139,11 @@ class InceptionAccessory {
 
         this.authToken = body.UserID;
         this.log(`[INFO] Authentication successful! UserID: ${this.authToken}`);
+
         callback(null);
     });
 }
+
 
 
 
