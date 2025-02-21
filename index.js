@@ -52,12 +52,17 @@ class InceptionAccessory {
             return callback(error);
         }
 
+        if (!body) {
+            this.log('[ERROR] API response is empty.');
+            return callback(new Error('API returned an empty response.'));
+        }
+
         let parsedBody;
         try {
             parsedBody = JSON.parse(body);
         } catch (e) {
-            this.log('[ERROR] Failed to parse API response:', e);
-            return callback(new Error('Invalid API response'));
+            this.log('[ERROR] Failed to parse API response:', body);
+            return callback(new Error('Invalid API response format.'));
         }
 
         if (!parsedBody.Areas || !Array.isArray(parsedBody.Areas) || parsedBody.Areas.length === 0) {
@@ -80,6 +85,7 @@ class InceptionAccessory {
         callback(null, state);
     });
 }
+
 
 
 
