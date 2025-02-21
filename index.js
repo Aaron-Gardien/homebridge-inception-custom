@@ -39,10 +39,10 @@ class InceptionAccessory {
 
     request.get({
         url: `${this.apiBaseUrl}/control/area`,
-        headers: { Cookie: this.authToken }, // Use session cookie
+        headers: { "X-User-ID": this.authToken }, // Pass UserID in request header
         json: true
     }, (error, response, body) => {
-        if (error || response.statusCode === 401) { // Handle expired sessions
+        if (error || response.statusCode === 401) { // Handle unauthorized errors
             this.log('[WARNING] Session expired. Re-authenticating...');
             this.authToken = null; // Clear invalid session
             return this.authenticate((err) => {
@@ -99,11 +99,6 @@ class InceptionAccessory {
   }
 
   authenticate(callback) {
-    if (this.authToken) {
-        this.log('[INFO] Reusing existing session token.');
-        return callback(null);
-    }
-
     this.log('[INFO] Authenticating with Inception API...');
 
     const options = {
@@ -126,19 +121,18 @@ class InceptionAccessory {
             return callback(new Error('Authentication failed'));
         }
 
-        // Extract session cookie from response headers
-        const setCookieHeader = response.headers['set-cookie'];
-        if (!setCookieHeader || setCookieHeader.length === 0) {
-            this.log('[ERROR] No session cookie received!');
-            return callback(new Error('No session cookie received'));
+        // Store UserID instead of a session cookie
+        if (!body.UserID) {
+            this.log('[ERROR] No UserID received from API!');
+            return callback(new Error('No UserID received from API'));
         }
 
-        this.authToken = setCookieHeader[0].split(';')[0]; // Extract only the cookie value
-        this.log(`[INFO] Authentication successful! Session Cookie: ${this.authToken}`);
-
+        this.authToken = body.UserID;
+        this.log(`[INFO] Authentication successful! UserID: ${this.authToken}`);
         callback(null);
     });
 }
+
 
 
 
