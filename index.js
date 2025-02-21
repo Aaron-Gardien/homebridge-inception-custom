@@ -1,5 +1,13 @@
 const request = require('request');
-const { API, AccessoryPlugin, Service, Characteristic } = require('homebridge');
+
+let Service, Characteristic;
+
+module.exports = (homebridge) => {
+  Service = homebridge.hap.Service;
+  Characteristic = homebridge.hap.Characteristic;
+  
+  homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAccessory);
+};
 
 class InceptionAccessory {
   constructor(log, config) {
@@ -71,7 +79,3 @@ class InceptionAccessory {
     return [this.service];
   }
 }
-
-module.exports = (homebridge) => {
-  homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAccessory);
-};
