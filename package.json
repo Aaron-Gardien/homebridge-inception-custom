@@ -1,0 +1,16 @@
+{
+  "name": "homebridge-inception-custom",
+  "version": "1.0.0",
+  "description": "Custom Homebridge plugin for Inner Range Inception",
+  "main": "index.js",
+  "keywords": ["homebridge-plugin"],
+  "engines": {
+    "node": ">=14.0.0",
+    "homebridge": ">=1.0.0"
+  },
+  "dependencies": {
+    "request": "^2.88.2"
+  },
+  "author": "Aaron Gardien",
+  "license": "MIT"
+}
