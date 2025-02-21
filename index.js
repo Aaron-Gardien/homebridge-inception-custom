@@ -28,44 +28,43 @@ class InceptionAccessory {
 
   getAlarmState(callback) {
     if (!this.authToken) {
-      this.log('No authentication token. Attempting to re-authenticate...');
-      return this.authenticate(() => this.getAlarmState(callback));
+        this.log('[WARNING] No authentication token. Attempting to re-authenticate...');
+        return this.authenticate(() => this.getAlarmState(callback));
     }
 
     request.get({
-      url: `${this.apiBaseUrl}/control/area`,
-      headers: { Cookie: `LoginSessId=${this.authToken}` },
-      json: true
+        url: `${this.apiBaseUrl}/control/area`,
+        headers: { Cookie: this.authToken }, // Use session cookie
+        json: true
     }, (error, response, body) => {
-      if (error || response.statusCode !== 200 || !body) {
-        this.log('[ERROR] Failed to fetch alarm state:', error || response.statusCode);
-        return callback(error || new Error('Invalid response from API'));
-      }
+        if (error || response.statusCode !== 200 || !body) {
+            this.log('[ERROR] Failed to fetch alarm state:', error || response.statusCode);
+            return callback(error || new Error('Invalid response from API'));
+        }
 
-      // Debugging: Log the full API response
-      this.log('[DEBUG] API Response:', JSON.stringify(body, null, 2));
+        // Debugging: Log the full API response
+        this.log('[DEBUG] API Response:', JSON.stringify(body, null, 2));
 
-      if (!body.Areas || !Array.isArray(body.Areas) || body.Areas.length === 0) {
-        this.log('[ERROR] Unexpected API response format: Missing Areas');
-        return callback(new Error('Invalid API response format'));
-      }
+        if (!body.Areas || !Array.isArray(body.Areas) || body.Areas.length === 0) {
+            this.log('[ERROR] Unexpected API response format: Missing Areas');
+            return callback(new Error('Invalid API response format'));
+        }
 
-      const isArmed = body.Areas[0].Armed;
+        const isArmed = body.Areas[0].Armed;
+        if (typeof isArmed !== 'boolean') {
+            this.log('[ERROR] Missing "Armed" status in API response.');
+            return callback(new Error('Missing Armed status in API response'));
+        }
 
-      if (typeof isArmed !== 'boolean') {
-        this.log('[ERROR] Missing "Armed" status in API response.');
-        return callback(new Error('Missing Armed status in API response'));
-      }
+        // Convert boolean to HomeKit security state
+        const state = isArmed
+            ? Characteristic.SecuritySystemCurrentState.AWAY_ARM
+            : Characteristic.SecuritySystemCurrentState.DISARMED;
 
-      // Convert boolean to HomeKit security state
-      const state = isArmed
-        ? Characteristic.SecuritySystemCurrentState.AWAY_ARM
-        : Characteristic.SecuritySystemCurrentState.DISARMED;
-
-      this.log(`[INFO] Alarm state: ${isArmed ? 'Armed' : 'Disarmed'}`);
-      callback(null, state);
+        this.log(`[INFO] Alarm state: ${isArmed ? 'Armed' : 'Disarmed'}`);
+        callback(null, state);
     });
-  }
+}
 
   setAlarmState(value, callback) {
     const arm = value === Characteristic.SecuritySystemTargetState.AWAY_ARM;
@@ -100,16 +99,24 @@ class InceptionAccessory {
         return callback(error);
       }
 
-      if (response.statusCode !== 200 || !body || !body.session_id) {
+      if (response.statusCode !== 200 || !body || body.Response.Result !== "Success") {
         this.log(`[ERROR] Authentication failed! Status Code: ${response.statusCode}, Response: ${JSON.stringify(body)}`);
         return callback(new Error('Authentication failed'));
       }
 
-      this.authToken = body.session_id;
-      this.log(`[INFO] Authentication successful! Token: ${this.authToken}`);
+      // Extract session cookie from response headers
+      const setCookieHeader = response.headers['set-cookie'];
+      if (!setCookieHeader || setCookieHeader.length === 0) {
+        this.log('[ERROR] No session cookie received!');
+        return callback(new Error('No session cookie received'));
+      }
+
+      this.authToken = setCookieHeader[0].split(';')[0]; // Extract only the cookie value
+      this.log(`[INFO] Authentication successful! Cookie: ${this.authToken}`);
       callback(null);
     });
-  }
+}
+
 
   getServices() {
     return [this.service];
