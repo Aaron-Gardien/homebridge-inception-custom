@@ -1,4 +1,4 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.1.1)
+// index.js - Homebridge Plugin for Inner Range Inception (v4.1.2)
 const axios = require('axios');
 const https = require('https');
 const homebridgeLib = require('homebridge-lib');
@@ -23,7 +23,27 @@ class InceptionAlarmAccessory {
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
             .on('get', this.getAlarmState.bind(this));
-        this.fetchAreaId().then(() => this.monitorUpdates());
+        this.fetchAreaId().then(() => this.monitorUpdates()).catch(error => this.log("Error fetching area ID:", error));
+    }
+
+    async fetchAreaId() {
+        try {
+            const response = await axios.get(`${this.API_ROOT}/control/area`, {
+                headers: { Authorization: `Bearer ${this.authToken}` },
+                httpsAgent: this.httpsAgent
+            });
+            if (response.status === 200 && response.data.length > 0) {
+                const area = response.data.find(area => area.Name === this.areaName);
+                if (area) {
+                    this.areaId = area.ID;
+                    this.log(`Resolved area name '${this.areaName}' to ID '${this.areaId}'`);
+                } else {
+                    this.log(`Area with name '${this.areaName}' not found.`);
+                }
+            }
+        } catch (error) {
+            this.log("Error fetching area ID:", error);
+        }
     }
 
     async getAlarmState(callback) {
