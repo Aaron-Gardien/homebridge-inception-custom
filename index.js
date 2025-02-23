@@ -1,4 +1,4 @@
-// Version 2.7 - Improved method binding and added explicit this validation
+// Version 2.8 - Fixed method binding issue by ensuring methods exist before binding
 const request = require('request');
 
 let Service, Characteristic;
@@ -24,6 +24,14 @@ class InceptionAccessory {
         this.areaId = null;
         
         this.service = new Service.SecuritySystem(config.name);
+
+        this.log('[DEBUG] Checking method existence before binding...');
+        const requiredMethods = ['getAlarmState', 'setAlarmState', 'startLongPolling', 'pollState', 'lookupAreaId', 'updateHomeKitState'];
+        requiredMethods.forEach(method => {
+            if (typeof this[method] !== 'function') {
+                throw new Error(`[FATAL] Method '${method}' is not defined before binding.`);
+            }
+        });
         
         this.log('[DEBUG] Ensuring method bindings...');
         this.getAlarmState = this.getAlarmState.bind(this);
