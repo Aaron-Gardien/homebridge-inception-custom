@@ -1,4 +1,4 @@
-// Version 1.2 - Fixed undefined method binding issue in constructor
+// Version 1.3 - Fixed incorrect method binding issue in constructor
 const request = require('request');
 
 let Service, Characteristic;
@@ -6,7 +6,7 @@ let Service, Characteristic;
 module.exports = (homebridge) => {
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
-    homebridge.registerAccessory('homebridge-inception', 'InceptionAlarm', InceptionAccessory);
+    homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAccessory);
 };
 
 class InceptionAccessory {
@@ -19,13 +19,14 @@ class InceptionAccessory {
         this.areaIndex = config.area; // Now stores an integer index
         this.areaId = null; // Will be determined dynamically
         
+        this.service = new Service.SecuritySystem(config.name);
+        
+        // Ensuring method bindings to avoid 'undefined' issues
         this.getAlarmState = this.getAlarmState.bind(this);
         this.setAlarmState = this.setAlarmState.bind(this);
         this.lookupAreaId = this.lookupAreaId.bind(this);
         this.startLongPolling = this.startLongPolling.bind(this);
 
-        this.service = new Service.SecuritySystem(config.name);
-        
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
             .on('get', this.getAlarmState);
