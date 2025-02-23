@@ -1,4 +1,4 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.0.2)
+// index.js - Homebridge Plugin for Inner Range Inception (v4.0.3)
 const axios = require('axios');
 const homebridgeLib = require('homebridge-lib');
 
@@ -22,6 +22,27 @@ class InceptionAlarmAccessory {
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
             .on('get', this.getAlarmState.bind(this));
         this.fetchAreaId().then(() => this.monitorUpdates());
+    }
+
+    async getAlarmState(callback) {
+        if (!this.areaId) {
+            callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
+            return;
+        }
+        try {
+            const response = await axios.get(`${this.API_ROOT}/control/area/${this.areaId}/state`, {
+                headers: { Authorization: `Bearer ${this.authToken}` }
+            });
+            if (response.status === 200) {
+                let state = response.data.Armed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED;
+                callback(null, state);
+            } else {
+                callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
+            }
+        } catch (error) {
+            this.log("Error fetching alarm state:", error);
+            callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
+        }
     }
 
     async fetchAreaId() {
