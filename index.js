@@ -1,9 +1,11 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.0.1)
+// index.js - Homebridge Plugin for Inner Range Inception (v4.0.2)
 const axios = require('axios');
 const homebridgeLib = require('homebridge-lib');
 
 module.exports = (homebridge) => {
     homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAlarmAccessory);
+    Service = homebridge.hap.Service;
+    Characteristic = homebridge.hap.Characteristic;
 };
 
 class InceptionAlarmAccessory {
@@ -15,9 +17,9 @@ class InceptionAlarmAccessory {
         this.ipAddress = config.ipAddress;
         this.areaId = null;
         this.API_ROOT = `https://${this.ipAddress}/api/v1`;
-        this.service = new homebridgeLib.Service.SecuritySystem(this.name);
+        this.service = new Service.SecuritySystem(this.name);
         this.service
-            .getCharacteristic(homebridgeLib.Characteristic.SecuritySystemCurrentState)
+            .getCharacteristic(Characteristic.SecuritySystemCurrentState)
             .on('get', this.getAlarmState.bind(this));
         this.fetchAreaId().then(() => this.monitorUpdates());
     }
@@ -71,8 +73,8 @@ class InceptionAlarmAccessory {
     processUpdates(updateData) {
         updateData.forEach(update => {
             if (update.Type === "AreaState" && update.ID === this.areaId) {
-                let state = update.Armed ? homebridgeLib.Characteristic.SecuritySystemCurrentState.AWAY_ARM : homebridgeLib.Characteristic.SecuritySystemCurrentState.DISARMED;
-                this.service.updateCharacteristic(homebridgeLib.Characteristic.SecuritySystemCurrentState, state);
+                let state = update.Armed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED;
+                this.service.updateCharacteristic(Characteristic.SecuritySystemCurrentState, state);
                 this.log(`Alarm Area ${update.ID} State Updated:`, state);
             }
         });
