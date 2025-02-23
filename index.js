@@ -1,7 +1,5 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.1.4)
 const axios = require('axios');
 const https = require('https');
-const homebridgeLib = require('homebridge-lib');
 
 module.exports = (homebridge) => {
     homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAlarmAccessory);
@@ -46,28 +44,6 @@ class InceptionAlarmAccessory {
         }
     }
 
-    async getAlarmState(callback) {
-        if (!this.areaId) {
-            callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
-            return;
-        }
-        try {
-            const response = await axios.get(`${this.API_ROOT}/control/area/${this.areaId}/state`, {
-                headers: { Authorization: `Bearer ${this.authToken}` },
-                httpsAgent: this.httpsAgent
-            });
-            if (response.status === 200) {
-                let state = this.mapStateValue(response.data.stateValue);
-                callback(null, state);
-            } else {
-                callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
-            }
-        } catch (error) {
-            this.log("Error fetching alarm state:", error);
-            callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
-        }
-    }
-
     async monitorUpdates() {
         if (!this.areaId) {
             this.log("Area ID not set, retrying in 5 seconds...");
@@ -81,7 +57,7 @@ class InceptionAlarmAccessory {
                 "RequestType": "MonitorEntityStates",
                 "InputData": {
                     "stateType": "AreaState",
-                    "timeSinceUpdate": this.lastUpdateTime || "0"
+                    "timeSinceUpdate": "0"
                 }
             }
         ];
@@ -92,26 +68,17 @@ class InceptionAlarmAccessory {
         try {
             const response = await axios.post(`${this.API_ROOT}/monitor-updates`, requestBody, {
                 headers: { Authorization: `Bearer ${this.authToken}` },
-                timeout: 60000, // Long polling waits up to 60 seconds
+                timeout: 60000,
                 httpsAgent: this.httpsAgent
             });
             
             if (response.status === 200) {
                 this.log("Received Update:", response.data);
                 this.processUpdates(response.data);
-                if (response.data.Result && response.data.Result.updateTime) {
-                    this.lastUpdateTime = response.data.Result.updateTime;
-                }
             }
-            // Immediately call monitorUpdates again to maintain long polling
-            setImmediate(() => this.monitorUpdates());
+            this.monitorUpdates();
         } catch (error) {
-            this.log("Polling error (HTTP Status: ", error.response?.status, " - ", error.response?.statusText, "):", error.message);
-            if (error.response) {
-                this.log("Response Headers:", JSON.stringify(error.response.headers));
-                this.log("Response Data:", JSON.stringify(error.response.data));
-            }
-            // Wait a bit before retrying to prevent rapid loops
+            this.log("Polling error:", error.message);
             setTimeout(() => this.monitorUpdates(), 5000);
         }
     }
@@ -121,7 +88,8 @@ class InceptionAlarmAccessory {
         
         updateData.Result.stateData.forEach(update => {
             if (update.ID === this.areaId) {
-                let state = this.mapStateValue(update.stateValue);
+                this.log(`Received PublicState (Base10): ${update.PublicState}, Binary: ${update.PublicState.toString(2)}`);
+                let state = this.mapStateValue(update.PublicState);
                 this.service.updateCharacteristic(Characteristic.SecuritySystemCurrentState, state);
                 this.log(`Alarm Area ${update.ID} State Updated:`, state);
             }
@@ -129,11 +97,22 @@ class InceptionAlarmAccessory {
     }
 
     mapStateValue(stateValue) {
+        this.log(`Decoding state value: ${stateValue} (Binary: ${stateValue.toString(2)})`);
+        
         let state = Characteristic.SecuritySystemCurrentState.DISARMED;
-        if (stateValue & 0x00000200) state = Characteristic.SecuritySystemCurrentState.STAY_ARM; // Perimeter mode
-        if (stateValue & 0x00000400) state = Characteristic.SecuritySystemCurrentState.NIGHT_ARM; // Night mode
-        if (stateValue & 0x00000100) state = Characteristic.SecuritySystemCurrentState.AWAY_ARM; // Full mode
-        if (stateValue & 0x00000002) state = Characteristic.SecuritySystemCurrentState.ALARM_TRIGGERED; // Alarm active
+        if (stateValue & 0x00000001) state = Characteristic.SecuritySystemCurrentState.AWAY_ARM;
+        if (stateValue & 0x00000002) state = Characteristic.SecuritySystemCurrentState.ALARM_TRIGGERED;
+        if (stateValue & 0x00000004) this.log('Entry Delay Active');
+        if (stateValue & 0x00000008) this.log('Exit Delay Active');
+        if (stateValue & 0x00000010) this.log('Arm Warning Active');
+        if (stateValue & 0x00000020) this.log('Defer Disarmed Active');
+        if (stateValue & 0x00000040) this.log('Detecting Active Inputs');
+        if (stateValue & 0x00000080) this.log('Walk Test Active');
+        if (stateValue & 0x00000100) state = Characteristic.SecuritySystemCurrentState.AWAY_ARM;
+        if (stateValue & 0x00000200) state = Characteristic.SecuritySystemCurrentState.STAY_ARM;
+        if (stateValue & 0x00000400) state = Characteristic.SecuritySystemCurrentState.NIGHT_ARM;
+        if (stateValue & 0x00000800) state = Characteristic.SecuritySystemCurrentState.DISARMED;
+        if (stateValue & 0x00001000) this.log('Arm Ready');
         return state;
     }
 
