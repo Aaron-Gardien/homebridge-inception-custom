@@ -1,4 +1,4 @@
-// Version 1.9 - Fixed JSON parsing error by handling empty responses
+// Version 2.0 - Improved handling of empty poll responses and HTTP errors
 const request = require('request');
 
 let Service, Characteristic;
@@ -94,12 +94,10 @@ class InceptionAccessory {
         request(options, (error, response, body) => {
             if (error) {
                 this.log('[ERROR] Failed to poll state:', error);
+            } else if (!body || body.trim() === "") {
+                this.log('[WARNING] Poll request returned an empty response. Retrying...');
             } else {
                 try {
-                    if (!body) {
-                        this.log('[WARNING] Received empty response from poll request.');
-                        return;
-                    }
                     let parsedBody = JSON.parse(body);
                     if (parsedBody.Updates) {
                         parsedBody.Updates.forEach(update => {
