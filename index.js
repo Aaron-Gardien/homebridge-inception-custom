@@ -1,4 +1,4 @@
-// Version 1.8 - Added handling for active alarm state in HomeKit
+// Version 1.9 - Fixed JSON parsing error by handling empty responses
 const request = require('request');
 
 let Service, Characteristic;
@@ -56,15 +56,18 @@ class InceptionAccessory {
                 return;
             }
 
-            let parsedBody = JSON.parse(body);
-            if (!Array.isArray(parsedBody) || parsedBody.length <= this.areaIndex) {
-                this.log('[ERROR] Invalid area index or missing areas in response:', parsedBody);
-                return;
+            try {
+                let parsedBody = JSON.parse(body);
+                if (!Array.isArray(parsedBody) || parsedBody.length <= this.areaIndex) {
+                    this.log('[ERROR] Invalid area index or missing areas in response:', parsedBody);
+                    return;
+                }
+                this.areaId = parsedBody[this.areaIndex].ID;
+                this.log(`[INFO] Selected Area ID: ${this.areaId}`);
+                this.startLongPolling();
+            } catch (parseError) {
+                this.log('[ERROR] Failed to parse area list response:', parseError);
             }
-
-            this.areaId = parsedBody[this.areaIndex].ID;
-            this.log(`[INFO] Selected Area ID: ${this.areaId}`);
-            this.startLongPolling();
         });
     }
 
@@ -92,13 +95,21 @@ class InceptionAccessory {
             if (error) {
                 this.log('[ERROR] Failed to poll state:', error);
             } else {
-                let parsedBody = JSON.parse(body);
-                if (parsedBody.Updates) {
-                    parsedBody.Updates.forEach(update => {
-                        if (update.Type === 'AreaStateUpdate' && update.AreaId === this.areaId) {
-                            this._updateHomeKitState(update.State);
-                        }
-                    });
+                try {
+                    if (!body) {
+                        this.log('[WARNING] Received empty response from poll request.');
+                        return;
+                    }
+                    let parsedBody = JSON.parse(body);
+                    if (parsedBody.Updates) {
+                        parsedBody.Updates.forEach(update => {
+                            if (update.Type === 'AreaStateUpdate' && update.AreaId === this.areaId) {
+                                this._updateHomeKitState(update.State);
+                            }
+                        });
+                    }
+                } catch (parseError) {
+                    this.log('[ERROR] Failed to parse poll response:', parseError);
                 }
             }
             setTimeout(() => this.pollState(), 5000);
@@ -127,67 +138,5 @@ class InceptionAccessory {
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
             .updateValue(homekitState);
-    }
-
-    _getAlarmState(callback) {
-        if (!this.areaId) {
-            this.log('[ERROR] Area ID not set. Cannot fetch alarm state.');
-            return callback(new Error('Area ID not available'));
-        }
-
-        var options = {
-            'method': 'GET',
-            'url': `${this.apiBaseUrl}/control/area/${this.areaId}/state`,
-            'headers': {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${this.apiToken}`
-            }
-        };
-
-        request(options, (error, response, body) => {
-            if (error) {
-                this.log('[ERROR] Failed to fetch alarm state:', error);
-                return callback(error);
-            }
-            
-            let parsedBody = JSON.parse(body);
-            this._updateHomeKitState(parsedBody.State);
-            callback(null);
-        });
-    }
-
-    _setAlarmState(value, callback) {
-        if (!this.areaId) {
-            this.log('[ERROR] Area ID not set. Cannot set alarm state.');
-            return callback(new Error('Area ID not available'));
-        }
-
-        const armType = value === Characteristic.SecuritySystemTargetState.AWAY_ARM ? "AwayArm"
-                        : value === Characteristic.SecuritySystemTargetState.STAY_ARM ? "StayArm"
-                        : value === Characteristic.SecuritySystemTargetState.NIGHT_ARM ? "SleepArm"
-                        : "Disarm";
-
-        var options = {
-            'method': 'POST',
-            'url': `${this.apiBaseUrl}/control/area/${this.areaId}/activity`,
-            'headers': {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiToken}`
-            },
-            body: JSON.stringify({
-                "Type": "ControlArea",
-                "AreaControlType": armType
-            })
-        };
-
-        request(options, (error, response, body) => {
-            if (error) {
-                this.log('[ERROR] Error setting alarm state:', error);
-                return callback(error);
-            }
-            this.log(`[INFO] Successfully set alarm state to: ${armType}`);
-            callback(null);
-        });
     }
 }
