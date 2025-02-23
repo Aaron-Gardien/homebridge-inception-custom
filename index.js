@@ -1,5 +1,6 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.0.3)
+// index.js - Homebridge Plugin for Inner Range Inception (v4.0.4)
 const axios = require('axios');
+const https = require('https');
 const homebridgeLib = require('homebridge-lib');
 
 module.exports = (homebridge) => {
@@ -17,6 +18,7 @@ class InceptionAlarmAccessory {
         this.ipAddress = config.ipAddress;
         this.areaId = null;
         this.API_ROOT = `https://${this.ipAddress}/api/v1`;
+        this.httpsAgent = new https.Agent({ rejectUnauthorized: false }); // Ignore self-signed cert errors
         this.service = new Service.SecuritySystem(this.name);
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
@@ -31,7 +33,8 @@ class InceptionAlarmAccessory {
         }
         try {
             const response = await axios.get(`${this.API_ROOT}/control/area/${this.areaId}/state`, {
-                headers: { Authorization: `Bearer ${this.authToken}` }
+                headers: { Authorization: `Bearer ${this.authToken}` },
+                httpsAgent: this.httpsAgent
             });
             if (response.status === 200) {
                 let state = response.data.Armed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED;
@@ -52,7 +55,8 @@ class InceptionAlarmAccessory {
         }
         try {
             const response = await axios.get(`${this.API_ROOT}/control/area`, {
-                headers: { Authorization: `Bearer ${this.authToken}` }
+                headers: { Authorization: `Bearer ${this.authToken}` },
+                httpsAgent: this.httpsAgent
             });
             if (response.status === 200 && response.data.length > 0) {
                 const area = response.data.find(area => area.Name === this.areaName);
@@ -78,7 +82,8 @@ class InceptionAlarmAccessory {
         try {
             const response = await axios.post(`${this.API_ROOT}/updates/monitor`, requestBody, {
                 headers: { Authorization: `Bearer ${this.authToken}` },
-                timeout: 60000
+                timeout: 60000,
+                httpsAgent: this.httpsAgent
             });
             if (response.status === 200) {
                 this.log("Received Update:", response.data);
