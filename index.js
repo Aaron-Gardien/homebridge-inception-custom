@@ -1,4 +1,4 @@
-// Version 3.0 - Converted working polling mechanism from inception-mqtt, removed MQTT
+// Version 3.2 - Restored full functionality with long polling and HomeKit updates
 const request = require('request');
 
 let Service, Characteristic;
@@ -25,14 +25,14 @@ class InceptionAccessory {
         
         this.service = new Service.SecuritySystem(config.name);
 
-        // Bind methods
+        // Define methods before binding
         this.getAlarmState = this.getAlarmState.bind(this);
         this.setAlarmState = this.setAlarmState.bind(this);
         this.startLongPolling = this.startLongPolling.bind(this);
         this.pollState = this.pollState.bind(this);
         this.lookupAreaId = this.lookupAreaId.bind(this);
         this.updateHomeKitState = this.updateHomeKitState.bind(this);
-        
+
         this.lookupAreaId();
     }
 
