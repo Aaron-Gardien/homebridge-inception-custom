@@ -1,4 +1,4 @@
-// Version 1.3 - Fixed incorrect method binding issue in constructor
+// Version 1.4 - Refactored method binding using arrow functions to fix 'bind' issue
 const request = require('request');
 
 let Service, Characteristic;
@@ -21,11 +21,10 @@ class InceptionAccessory {
         
         this.service = new Service.SecuritySystem(config.name);
         
-        // Ensuring method bindings to avoid 'undefined' issues
-        this.getAlarmState = this.getAlarmState.bind(this);
-        this.setAlarmState = this.setAlarmState.bind(this);
-        this.lookupAreaId = this.lookupAreaId.bind(this);
-        this.startLongPolling = this.startLongPolling.bind(this);
+        // Using arrow functions to automatically bind methods
+        this.getAlarmState = (callback) => this._getAlarmState(callback);
+        this.setAlarmState = (value, callback) => this._setAlarmState(value, callback);
+        this.lookupAreaId();
 
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
@@ -34,9 +33,6 @@ class InceptionAccessory {
         this.service
             .getCharacteristic(Characteristic.SecuritySystemTargetState)
             .on('set', this.setAlarmState);
-
-        // Lookup and set the area ID before polling starts
-        this.lookupAreaId();
     }
 
     lookupAreaId() {
@@ -68,7 +64,38 @@ class InceptionAccessory {
         });
     }
 
-    setAlarmState(value, callback) {
+    _getAlarmState(callback) {
+        if (!this.areaId) {
+            this.log('[ERROR] Area ID not set. Cannot fetch alarm state.');
+            return callback(new Error('Area ID not available'));
+        }
+
+        var options = {
+            'method': 'GET',
+            'url': `${this.apiBaseUrl}/control/area/${this.areaId}/state`,
+            'headers': {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${this.apiToken}`
+            }
+        };
+
+        request(options, (error, response, body) => {
+            if (error) {
+                this.log('[ERROR] Failed to fetch alarm state:', error);
+                return callback(error);
+            }
+            
+            let parsedBody = JSON.parse(body);
+            const stateValue = parsedBody.State;
+            const isArmed = stateValue & 1;
+            const homekitState = isArmed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED;
+
+            this.log(`[INFO] Alarm state: ${isArmed ? 'Armed' : 'Disarmed'}`);
+            callback(null, homekitState);
+        });
+    }
+
+    _setAlarmState(value, callback) {
         if (!this.areaId) {
             this.log('[ERROR] Area ID not set. Cannot set alarm state.');
             return callback(new Error('Area ID not available'));
