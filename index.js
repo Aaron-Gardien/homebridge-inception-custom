@@ -1,4 +1,4 @@
-// Version 2.6 - Added detailed logging for method binding issues
+// Version 2.7 - Improved method binding and added explicit this validation
 const request = require('request');
 
 let Service, Characteristic;
@@ -11,6 +11,10 @@ module.exports = (homebridge) => {
 
 class InceptionAccessory {
     constructor(log, config) {
+        if (!log || !config) {
+            throw new Error("[FATAL] InceptionAccessory constructor missing required parameters: log or config.");
+        }
+
         this.log = log;
         this.config = config;
         this.apiToken = config.apiToken;
@@ -21,20 +25,16 @@ class InceptionAccessory {
         
         this.service = new Service.SecuritySystem(config.name);
         
-        try {
-            // Ensure method bindings
-            this.log('[DEBUG] Binding class methods...');
-            this.getAlarmState = this.getAlarmState.bind(this);
-            this.setAlarmState = this.setAlarmState.bind(this);
-            this.startLongPolling = this.startLongPolling.bind(this);
-            this.pollState = this.pollState.bind(this);
-            this.lookupAreaId = this.lookupAreaId.bind(this);
-            this.updateHomeKitState = this.updateHomeKitState.bind(this);
-            this.log('[DEBUG] Method bindings successful.');
-        } catch (bindingError) {
-            this.log('[ERROR] Failed to bind methods:', bindingError);
-        }
-
+        this.log('[DEBUG] Ensuring method bindings...');
+        this.getAlarmState = this.getAlarmState.bind(this);
+        this.setAlarmState = this.setAlarmState.bind(this);
+        this.startLongPolling = this.startLongPolling.bind(this);
+        this.pollState = this.pollState.bind(this);
+        this.lookupAreaId = this.lookupAreaId.bind(this);
+        this.updateHomeKitState = this.updateHomeKitState.bind(this);
+        
+        this.log('[DEBUG] Method bindings completed successfully.');
+        
         this.lookupAreaId();
     }
 
