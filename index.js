@@ -1,4 +1,4 @@
-// Version 1.6 - Fixed missing startLongPolling method to resolve 'startLongPolling is not a function' error
+// Version 1.8 - Added handling for active alarm state in HomeKit
 const request = require('request');
 
 let Service, Characteristic;
@@ -16,12 +16,11 @@ class InceptionAccessory {
         this.apiToken = config.apiToken;
         this.ipAddress = config.ipAddress;
         this.apiBaseUrl = `http://${this.ipAddress}/api/v1`;
-        this.areaIndex = config.area; // Now stores an integer index
-        this.areaId = null; // Will be determined dynamically
+        this.areaIndex = config.area;
+        this.areaId = null;
         
         this.service = new Service.SecuritySystem(config.name);
         
-        // Using arrow functions to automatically bind methods
         this.getAlarmState = (callback) => this._getAlarmState(callback);
         this.setAlarmState = (value, callback) => this._setAlarmState(value, callback);
         this.startLongPolling = () => this._startLongPolling();
@@ -93,12 +92,41 @@ class InceptionAccessory {
             if (error) {
                 this.log('[ERROR] Failed to poll state:', error);
             } else {
-                this.log('[INFO] Polling response received:', body);
+                let parsedBody = JSON.parse(body);
+                if (parsedBody.Updates) {
+                    parsedBody.Updates.forEach(update => {
+                        if (update.Type === 'AreaStateUpdate' && update.AreaId === this.areaId) {
+                            this._updateHomeKitState(update.State);
+                        }
+                    });
+                }
             }
-            
-            // Continue polling after a short delay
             setTimeout(() => this.pollState(), 5000);
         });
+    }
+
+    _updateHomeKitState(stateValue) {
+        const isArmed = stateValue & 1;
+        const isAlarm = stateValue & 2; // 0x00000002 - Area is in alarm
+        const isStayArm = stateValue & 512;
+        const isNightArm = stateValue & 1024;
+        const isDisarmed = stateValue & 2048;
+
+        let homekitState = Characteristic.SecuritySystemCurrentState.DISARMED;
+        if (isAlarm) {
+            homekitState = Characteristic.SecuritySystemCurrentState.ALARM_TRIGGERED;
+        } else if (isNightArm) {
+            homekitState = Characteristic.SecuritySystemCurrentState.NIGHT_ARM;
+        } else if (isStayArm) {
+            homekitState = Characteristic.SecuritySystemCurrentState.STAY_ARM;
+        } else if (isArmed) {
+            homekitState = Characteristic.SecuritySystemCurrentState.AWAY_ARM;
+        }
+
+        this.log(`[INFO] Updating HomeKit state to: ${homekitState}`);
+        this.service
+            .getCharacteristic(Characteristic.SecuritySystemCurrentState)
+            .updateValue(homekitState);
     }
 
     _getAlarmState(callback) {
@@ -123,12 +151,8 @@ class InceptionAccessory {
             }
             
             let parsedBody = JSON.parse(body);
-            const stateValue = parsedBody.State;
-            const isArmed = stateValue & 1;
-            const homekitState = isArmed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED;
-
-            this.log(`[INFO] Alarm state: ${isArmed ? 'Armed' : 'Disarmed'}`);
-            callback(null, homekitState);
+            this._updateHomeKitState(parsedBody.State);
+            callback(null);
         });
     }
 
