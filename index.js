@@ -1,4 +1,4 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.1.2)
+// index.js - Homebridge Plugin for Inner Range Inception (v4.1.3)
 const axios = require('axios');
 const https = require('https');
 const homebridgeLib = require('homebridge-lib');
@@ -92,7 +92,7 @@ class InceptionAlarmAccessory {
         try {
             const response = await axios.post(`${this.API_ROOT}/monitor-updates`, requestBody, {
                 headers: { Authorization: `Bearer ${this.authToken}` },
-                timeout: 60000,
+                timeout: 60000, // Long polling waits up to 60 seconds
                 httpsAgent: this.httpsAgent
             });
             
@@ -100,14 +100,16 @@ class InceptionAlarmAccessory {
                 this.log("Received Update:", response.data);
                 this.processUpdates(response.data);
             }
-            this.monitorUpdates(); // Keep polling
+            // Immediately call monitorUpdates again to maintain long polling
+            setImmediate(() => this.monitorUpdates());
         } catch (error) {
             this.log("Polling error (HTTP Status: ", error.response?.status, " - ", error.response?.statusText, "):", error.message);
             if (error.response) {
                 this.log("Response Headers:", JSON.stringify(error.response.headers));
                 this.log("Response Data:", JSON.stringify(error.response.data));
             }
-            setTimeout(() => this.monitorUpdates(), 5000); // Retry after delay
+            // Wait a bit before retrying to prevent rapid loops
+            setTimeout(() => this.monitorUpdates(), 5000);
         }
     }
 
