@@ -1,3 +1,4 @@
+// Version 1.1 - Fixed method binding issue in constructor
 const request = require('request');
 
 let Service, Characteristic;
@@ -20,6 +21,7 @@ class InceptionAccessory {
         
         this.service = new Service.SecuritySystem(config.name);
         
+        // Binding methods to ensure correct scope
         this.getAlarmState = this.getAlarmState.bind(this);
         this.setAlarmState = this.setAlarmState.bind(this);
         
