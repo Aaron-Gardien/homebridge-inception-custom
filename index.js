@@ -19,13 +19,17 @@ class InceptionAccessory {
         this.areaId = null; // Will be determined dynamically
         
         this.service = new Service.SecuritySystem(config.name);
+        
+        this.getAlarmState = this.getAlarmState.bind(this);
+        this.setAlarmState = this.setAlarmState.bind(this);
+        
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
-            .on('get', this.getAlarmState.bind(this));
+            .on('get', this.getAlarmState);
         
         this.service
             .getCharacteristic(Characteristic.SecuritySystemTargetState)
-            .on('set', this.setAlarmState.bind(this));
+            .on('set', this.setAlarmState);
 
         // Lookup and set the area ID before polling starts
         this.lookupAreaId();
