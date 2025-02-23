@@ -1,4 +1,4 @@
-// Version 2.4 - Fixed undefined method binding issue in constructor
+// Version 2.5 - Fixed undefined method binding issue by ensuring function context
 const request = require('request');
 
 let Service, Characteristic;
@@ -30,14 +30,6 @@ class InceptionAccessory {
         this.updateHomeKitState = this.updateHomeKitState.bind(this);
 
         this.lookupAreaId();
-
-        this.service
-            .getCharacteristic(Characteristic.SecuritySystemCurrentState)
-            .on('get', this.getAlarmState);
-        
-        this.service
-            .getCharacteristic(Characteristic.SecuritySystemTargetState)
-            .on('set', this.setAlarmState);
     }
 
     getServices() {
