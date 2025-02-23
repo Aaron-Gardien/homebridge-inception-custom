@@ -3,7 +3,7 @@ const https = require('https');
 
 module.exports = (homebridge) => {
     homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAlarmAccessory);
-    const { Service, Characteristic } = homebridge.hap;
+    Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
 };
 
