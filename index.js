@@ -1,4 +1,4 @@
-// Version 1.4 - Refactored method binding using arrow functions to fix 'bind' issue
+// Version 1.5 - Fixed missing getServices method to resolve 'getServices is not a function' error
 const request = require('request');
 
 let Service, Characteristic;
@@ -33,6 +33,10 @@ class InceptionAccessory {
         this.service
             .getCharacteristic(Characteristic.SecuritySystemTargetState)
             .on('set', this.setAlarmState);
+    }
+
+    getServices() {
+        return [this.service];
     }
 
     lookupAreaId() {
