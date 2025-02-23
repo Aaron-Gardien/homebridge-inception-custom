@@ -1,4 +1,4 @@
-// Version 2.5 - Fixed undefined method binding issue by ensuring function context
+// Version 2.6 - Added detailed logging for method binding issues
 const request = require('request');
 
 let Service, Characteristic;
@@ -21,13 +21,19 @@ class InceptionAccessory {
         
         this.service = new Service.SecuritySystem(config.name);
         
-        // Ensure method bindings
-        this.getAlarmState = this.getAlarmState.bind(this);
-        this.setAlarmState = this.setAlarmState.bind(this);
-        this.startLongPolling = this.startLongPolling.bind(this);
-        this.pollState = this.pollState.bind(this);
-        this.lookupAreaId = this.lookupAreaId.bind(this);
-        this.updateHomeKitState = this.updateHomeKitState.bind(this);
+        try {
+            // Ensure method bindings
+            this.log('[DEBUG] Binding class methods...');
+            this.getAlarmState = this.getAlarmState.bind(this);
+            this.setAlarmState = this.setAlarmState.bind(this);
+            this.startLongPolling = this.startLongPolling.bind(this);
+            this.pollState = this.pollState.bind(this);
+            this.lookupAreaId = this.lookupAreaId.bind(this);
+            this.updateHomeKitState = this.updateHomeKitState.bind(this);
+            this.log('[DEBUG] Method bindings successful.');
+        } catch (bindingError) {
+            this.log('[ERROR] Failed to bind methods:', bindingError);
+        }
 
         this.lookupAreaId();
     }
