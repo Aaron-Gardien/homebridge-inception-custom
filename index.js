@@ -1,4 +1,3 @@
-const WebSocket = require('ws');
 const request = require('request');
 
 let Service, Characteristic;
@@ -6,7 +5,7 @@ let Service, Characteristic;
 module.exports = (homebridge) => {
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
-    homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAccessory);
+    homebridge.registerAccessory('homebridge-inception', 'InceptionAlarm', InceptionAccessory);
 };
 
 class InceptionAccessory {
@@ -14,9 +13,10 @@ class InceptionAccessory {
         this.log = log;
         this.config = config;
         this.apiToken = config.apiToken;
-        this.apiBaseUrl = config.apiBaseUrl;
-        this.areaId = config.areaId;
-        this.ws = null;
+        this.ipAddress = config.ipAddress;
+        this.apiBaseUrl = `http://${this.ipAddress}/api/v1`;
+        this.areaIndex = config.area; // Now stores an integer index
+        this.areaId = null; // Will be determined dynamically
         
         this.service = new Service.SecuritySystem(config.name);
         this.service
@@ -27,60 +27,101 @@ class InceptionAccessory {
             .getCharacteristic(Characteristic.SecuritySystemTargetState)
             .on('set', this.setAlarmState.bind(this));
 
-        // Initialize WebSocket connection
-        this.initWebSocket();
+        // Lookup and set the area ID before polling starts
+        this.lookupAreaId();
     }
 
-    initWebSocket() {
-        const wsUrl = `${this.config.apiBaseUrl.replace('http', 'ws')}/api/v1/monitor-updates`;
-        this.ws = new WebSocket(wsUrl, {
-            headers: {
+    lookupAreaId() {
+        this.log('[INFO] Looking up area ID...');
+        var options = {
+            'method': 'GET',
+            'url': `${this.apiBaseUrl}/control/area`,
+            'headers': {
+                'Accept': 'application/json',
                 'Authorization': `Bearer ${this.apiToken}`
             }
-        });
+        };
 
-        this.ws.on('open', () => {
-            this.log('WebSocket connection established.');
-            const monitorRequest = {
-                Type: 'UpdateMonitorRequest',
-                Areas: [this.areaId]
-            };
-            this.ws.send(JSON.stringify(monitorRequest));
-        });
+        request(options, (error, response, body) => {
+            if (error) {
+                this.log('[ERROR] Failed to fetch area list:', error);
+                return;
+            }
 
-        this.ws.on('message', (data) => {
-            this.handleWebSocketMessage(data);
-        });
+            let parsedBody = JSON.parse(body);
+            if (!Array.isArray(parsedBody) || parsedBody.length <= this.areaIndex) {
+                this.log('[ERROR] Invalid area index or missing areas in response:', parsedBody);
+                return;
+            }
 
-        this.ws.on('error', (error) => {
-            this.log('WebSocket error:', error);
-        });
-
-        this.ws.on('close', () => {
-            this.log('WebSocket connection closed. Reconnecting in 5 seconds...');
-            setTimeout(() => this.initWebSocket(), 5000);
+            this.areaId = parsedBody[this.areaIndex].ID;
+            this.log(`[INFO] Selected Area ID: ${this.areaId}`);
+            this.startLongPolling();
         });
     }
 
-    handleWebSocketMessage(data) {
-        try {
-            const message = JSON.parse(data);
-            if (message.Type === 'AreaStateUpdate' && message.AreaId === this.areaId) {
-                const isArmed = message.State & 1;
-                this.log(`Area ${this.areaId} is now ${isArmed ? 'Armed' : 'Disarmed'}.`);
-                this.service
-                    .getCharacteristic(Characteristic.SecuritySystemCurrentState)
-                    .updateValue(isArmed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED);
+    startLongPolling() {
+        if (!this.areaId) {
+            this.log('[ERROR] Area ID not set. Cannot start polling.');
+            return;
+        }
+        this.log('[INFO] Starting long polling for state updates...');
+        this.pollState();
+    }
+
+    pollState() {
+        var options = {
+            'method': 'GET',
+            'url': `${this.apiBaseUrl}/monitor-updates/poll`,
+            'headers': {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${this.apiToken}`
             }
+        };
+
+        request(options, (error, response, body) => {
+            if (error) {
+                this.log('[ERROR] Failed to poll state:', error);
+            } else {
+                this.handlePollResponse(body);
+            }
+            
+            // Continue polling after a short delay
+            setTimeout(() => this.pollState(), 5000);
+        });
+    }
+
+    handlePollResponse(body) {
+        try {
+            let parsedBody = JSON.parse(body);
+            if (!parsedBody || !parsedBody.Updates) {
+                this.log('[WARNING] Polling response did not contain valid updates:', body);
+                return;
+            }
+
+            parsedBody.Updates.forEach(update => {
+                if (update.Type === 'AreaStateUpdate' && update.AreaId === this.areaId) {
+                    const isArmed = update.State & 1;
+                    this.log(`Area ${this.areaId} is now ${isArmed ? 'Armed' : 'Disarmed'}.`);
+                    this.service
+                        .getCharacteristic(Characteristic.SecuritySystemCurrentState)
+                        .updateValue(isArmed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED);
+                }
+            });
         } catch (error) {
-            this.log('Error parsing WebSocket message:', error);
+            this.log('[ERROR] Failed to parse polling response:', error);
         }
     }
 
     getAlarmState(callback) {
+        if (!this.areaId) {
+            this.log('[ERROR] Area ID not set. Cannot fetch state.');
+            return callback(new Error('Area ID not available'));
+        }
+
         var options = {
             'method': 'GET',
-            'url': `${this.config.apiBaseUrl}/api/v1/control/area/${this.areaId}/state`,
+            'url': `${this.apiBaseUrl}/control/area/${this.areaId}/state`,
             'headers': {
                 'Accept': 'application/json',
                 'Authorization': `Bearer ${this.apiToken}`
@@ -100,36 +141,6 @@ class InceptionAccessory {
 
             this.log(`[INFO] Alarm state: ${isArmed ? 'Armed' : 'Disarmed'}`);
             callback(null, homekitState);
-        });
-    }
-
-    setAlarmState(value, callback) {
-        const armType = value === Characteristic.SecuritySystemTargetState.AWAY_ARM ? "AwayArm"
-                        : value === Characteristic.SecuritySystemTargetState.STAY_ARM ? "StayArm"
-                        : value === Characteristic.SecuritySystemTargetState.NIGHT_ARM ? "SleepArm"
-                        : "Disarm";
-
-        var options = {
-            'method': 'POST',
-            'url': `${this.config.apiBaseUrl}/api/v1/control/area/${this.areaId}/activity`,
-            'headers': {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiToken}`
-            },
-            body: JSON.stringify({
-                "Type": "ControlArea",
-                "AreaControlType": armType
-            })
-        };
-
-        request(options, (error, response, body) => {
-            if (error) {
-                this.log('[ERROR] Error setting alarm state:', error);
-                return callback(error);
-            }
-            this.log(`[INFO] Successfully set alarm state to: ${armType}`);
-            callback(null);
         });
     }
 
