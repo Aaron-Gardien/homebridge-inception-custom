@@ -1,4 +1,4 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.1.3)
+// index.js - Homebridge Plugin for Inner Range Inception (v4.1.4)
 const axios = require('axios');
 const https = require('https');
 const homebridgeLib = require('homebridge-lib');
@@ -81,7 +81,7 @@ class InceptionAlarmAccessory {
                 "RequestType": "MonitorEntityStates",
                 "InputData": {
                     "stateType": "AreaState",
-                    "timeSinceUpdate": "0"
+                    "timeSinceUpdate": this.lastUpdateTime || "0"
                 }
             }
         ];
@@ -99,6 +99,9 @@ class InceptionAlarmAccessory {
             if (response.status === 200) {
                 this.log("Received Update:", response.data);
                 this.processUpdates(response.data);
+                if (response.data.Result && response.data.Result.updateTime) {
+                    this.lastUpdateTime = response.data.Result.updateTime;
+                }
             }
             // Immediately call monitorUpdates again to maintain long polling
             setImmediate(() => this.monitorUpdates());
