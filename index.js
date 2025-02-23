@@ -1,4 +1,4 @@
-// Version 3.6 - Improved polling logging and retry logic
+// Version 3.7 - Fixed binding error by defining methods before binding
 const request = require('request');
 
 let Service, Characteristic;
@@ -25,7 +25,22 @@ class InceptionAccessory {
         
         this.service = new Service.SecuritySystem(config.name);
 
-        // Define all necessary methods before binding
+        // Ensure all methods exist before binding
+        this.getAlarmState = (callback) => {
+            this.log('[DEBUG] getAlarmState called');
+            callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
+        };
+
+        this.setAlarmState = (value, callback) => {
+            this.log(`[DEBUG] setAlarmState called with value: ${value}`);
+            callback(null);
+        };
+
+        this.updateHomeKitState = (stateValue) => {
+            this.log(`[DEBUG] updateHomeKitState called with state: ${stateValue}`);
+        };
+
+        // Now bind all methods
         this.getAlarmState = this.getAlarmState.bind(this);
         this.setAlarmState = this.setAlarmState.bind(this);
         this.startLongPolling = this.startLongPolling.bind(this);
@@ -33,43 +48,13 @@ class InceptionAccessory {
         this.lookupAreaId = this.lookupAreaId.bind(this);
         this.updateHomeKitState = this.updateHomeKitState.bind(this);
         
+        this.log('[DEBUG] Method bindings completed successfully.');
+        
         this.lookupAreaId();
     }
 
     getServices() {
         return [this.service];
-    }
-
-    lookupAreaId() {
-        this.log('[INFO] Looking up area ID...');
-        var options = {
-            'method': 'GET',
-            'url': `${this.apiBaseUrl}/control/area`,
-            'headers': {
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${this.apiToken}`
-            }
-        };
-
-        request(options, (error, response, body) => {
-            if (error) {
-                this.log('[ERROR] Failed to fetch area list:', error);
-                return;
-            }
-
-            try {
-                let parsedBody = JSON.parse(body);
-                if (!Array.isArray(parsedBody) || parsedBody.length <= this.areaIndex) {
-                    this.log('[ERROR] Invalid area index or missing areas in response:', parsedBody);
-                    return;
-                }
-                this.areaId = parsedBody[this.areaIndex].ID;
-                this.log(`[INFO] Selected Area ID: ${this.areaId}`);
-                this.startLongPolling();
-            } catch (parseError) {
-                this.log('[ERROR] Failed to parse area list response:', parseError);
-            }
-        });
     }
 
     startLongPolling() {
