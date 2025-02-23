@@ -1,4 +1,4 @@
-// index.js - Homebridge Plugin for Inner Range Inception (v4.0.5)
+// index.js - Homebridge Plugin for Inner Range Inception (v4.1.1)
 const axios = require('axios');
 const https = require('https');
 const homebridgeLib = require('homebridge-lib');
@@ -37,7 +37,7 @@ class InceptionAlarmAccessory {
                 httpsAgent: this.httpsAgent
             });
             if (response.status === 200) {
-                let state = response.data.Armed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED;
+                let state = this.mapStateValue(response.data.stateValue);
                 callback(null, state);
             } else {
                 callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
@@ -48,70 +48,71 @@ class InceptionAlarmAccessory {
         }
     }
 
-    async fetchAreaId() {
-        if (!this.authToken) {
-            this.log("No authentication token provided.");
-            return;
-        }
-        try {
-            const response = await axios.get(`${this.API_ROOT}/control/area`, {
-                headers: { Authorization: `Bearer ${this.authToken}` },
-                httpsAgent: this.httpsAgent
-            });
-            if (response.status === 200 && response.data.length > 0) {
-                const area = response.data.find(area => area.Name === this.areaName);
-                if (area) {
-                    this.areaId = area.ID;
-                    this.log(`Resolved area name '${this.areaName}' to ID '${this.areaId}'`);
-                } else {
-                    this.log(`Area with name '${this.areaName}' not found.`);
-                }
-            }
-        } catch (error) {
-            this.log("Error fetching area ID:", error);
-        }
-    }
-
     async monitorUpdates() {
         if (!this.areaId) {
             this.log("Area ID not set, retrying in 5 seconds...");
             setTimeout(() => this.monitorUpdates(), 5000);
             return;
         }
-        const requestBody = { Monitor: [{ Type: "Area", ID: this.areaId }] };
-        this.log("Sending Monitor Request:", JSON.stringify(requestBody));
+        
+        const requestBody = [
+            {
+                "ID": "MonitorAreaStates",
+                "RequestType": "MonitorEntityStates",
+                "InputData": {
+                    "stateType": "AreaState",
+                    "timeSinceUpdate": "0"
+                }
+            }
+        ];
+        
+        this.log("Sending Monitor Request to: ", `${this.API_ROOT}/monitor-updates`);
+        this.log("Request Body:", JSON.stringify(requestBody));
+        
         try {
-            const response = await axios.post(`${this.API_ROOT}/monitor/updates`, requestBody, {
+            const response = await axios.post(`${this.API_ROOT}/monitor-updates`, requestBody, {
                 headers: { Authorization: `Bearer ${this.authToken}` },
                 timeout: 60000,
                 httpsAgent: this.httpsAgent
             });
+            
             if (response.status === 200) {
                 this.log("Received Update:", response.data);
                 this.processUpdates(response.data);
             }
             this.monitorUpdates(); // Keep polling
         } catch (error) {
-            this.log("Polling error (HTTP Status: ", error.response?.status, "):", error.message);
+            this.log("Polling error (HTTP Status: ", error.response?.status, " - ", error.response?.statusText, "):", error.message);
             if (error.response) {
-                this.log("Response Data:", error.response.data);
+                this.log("Response Headers:", JSON.stringify(error.response.headers));
+                this.log("Response Data:", JSON.stringify(error.response.data));
             }
             setTimeout(() => this.monitorUpdates(), 5000); // Retry after delay
         }
     }
 
     processUpdates(updateData) {
-        updateData.forEach(update => {
-            if (update.Type === "AreaState" && update.ID === this.areaId) {
-                let state = update.Armed ? Characteristic.SecuritySystemCurrentState.AWAY_ARM : Characteristic.SecuritySystemCurrentState.DISARMED;
+        if (!updateData || !updateData.Result || !updateData.Result.stateData) return;
+        
+        updateData.Result.stateData.forEach(update => {
+            if (update.ID === this.areaId) {
+                let state = this.mapStateValue(update.stateValue);
                 this.service.updateCharacteristic(Characteristic.SecuritySystemCurrentState, state);
                 this.log(`Alarm Area ${update.ID} State Updated:`, state);
             }
         });
     }
 
+    mapStateValue(stateValue) {
+        let state = Characteristic.SecuritySystemCurrentState.DISARMED;
+        if (stateValue & 0x00000200) state = Characteristic.SecuritySystemCurrentState.STAY_ARM; // Perimeter mode
+        if (stateValue & 0x00000400) state = Characteristic.SecuritySystemCurrentState.NIGHT_ARM; // Night mode
+        if (stateValue & 0x00000100) state = Characteristic.SecuritySystemCurrentState.AWAY_ARM; // Full mode
+        if (stateValue & 0x00000002) state = Characteristic.SecuritySystemCurrentState.ALARM_TRIGGERED; // Alarm active
+        return state;
+    }
+
     getServices() {
         return [this.service];
     }
 }
-
