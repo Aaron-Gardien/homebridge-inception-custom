@@ -1,4 +1,4 @@
-// Version 1.1 - Fixed method binding issue in constructor
+// Version 1.2 - Fixed undefined method binding issue in constructor
 const request = require('request');
 
 let Service, Characteristic;
@@ -19,11 +19,12 @@ class InceptionAccessory {
         this.areaIndex = config.area; // Now stores an integer index
         this.areaId = null; // Will be determined dynamically
         
-        this.service = new Service.SecuritySystem(config.name);
-        
-        // Binding methods to ensure correct scope
         this.getAlarmState = this.getAlarmState.bind(this);
         this.setAlarmState = this.setAlarmState.bind(this);
+        this.lookupAreaId = this.lookupAreaId.bind(this);
+        this.startLongPolling = this.startLongPolling.bind(this);
+
+        this.service = new Service.SecuritySystem(config.name);
         
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
