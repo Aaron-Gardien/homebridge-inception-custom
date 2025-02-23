@@ -1,4 +1,4 @@
-// Version 1.5 - Fixed missing getServices method to resolve 'getServices is not a function' error
+// Version 1.6 - Fixed missing startLongPolling method to resolve 'startLongPolling is not a function' error
 const request = require('request');
 
 let Service, Characteristic;
@@ -24,6 +24,7 @@ class InceptionAccessory {
         // Using arrow functions to automatically bind methods
         this.getAlarmState = (callback) => this._getAlarmState(callback);
         this.setAlarmState = (value, callback) => this._setAlarmState(value, callback);
+        this.startLongPolling = () => this._startLongPolling();
         this.lookupAreaId();
 
         this.service
@@ -65,6 +66,38 @@ class InceptionAccessory {
             this.areaId = parsedBody[this.areaIndex].ID;
             this.log(`[INFO] Selected Area ID: ${this.areaId}`);
             this.startLongPolling();
+        });
+    }
+
+    _startLongPolling() {
+        this.log('[INFO] Starting long polling for state updates...');
+        this.pollState();
+    }
+
+    pollState() {
+        if (!this.areaId) {
+            this.log('[ERROR] Area ID not set. Cannot poll state.');
+            return;
+        }
+
+        var options = {
+            'method': 'GET',
+            'url': `${this.apiBaseUrl}/monitor-updates/poll`,
+            'headers': {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${this.apiToken}`
+            }
+        };
+
+        request(options, (error, response, body) => {
+            if (error) {
+                this.log('[ERROR] Failed to poll state:', error);
+            } else {
+                this.log('[INFO] Polling response received:', body);
+            }
+            
+            // Continue polling after a short delay
+            setTimeout(() => this.pollState(), 5000);
         });
     }
 
