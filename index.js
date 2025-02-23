@@ -1,4 +1,4 @@
-// Version 2.3 - Updated long polling to use correct request body for monitoring updates
+// Version 2.4 - Fixed undefined method binding issue in constructor
 const request = require('request');
 
 let Service, Characteristic;
@@ -21,9 +21,14 @@ class InceptionAccessory {
         
         this.service = new Service.SecuritySystem(config.name);
         
+        // Ensure method bindings
         this.getAlarmState = this.getAlarmState.bind(this);
         this.setAlarmState = this.setAlarmState.bind(this);
         this.startLongPolling = this.startLongPolling.bind(this);
+        this.pollState = this.pollState.bind(this);
+        this.lookupAreaId = this.lookupAreaId.bind(this);
+        this.updateHomeKitState = this.updateHomeKitState.bind(this);
+
         this.lookupAreaId();
 
         this.service
