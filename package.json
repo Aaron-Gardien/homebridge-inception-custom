@@ -1,6 +1,6 @@
 {
   "name": "homebridge-inception-custom",
-  "version": "3.2",
+  "version": "3.4",
   "description": "Homebridge plugin for Inner Range Inception alarm system",
   "main": "index.js",
   "keywords": ["homebridge-plugin", "inception", "alarm", "security"],
