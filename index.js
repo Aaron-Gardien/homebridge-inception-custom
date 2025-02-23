@@ -1,4 +1,4 @@
-// Version 3.5 - Restored polling and alarm control functionality
+// Version 3.4 - Fully restored functionality with polling and HomeKit updates
 const request = require('request');
 
 let Service, Characteristic;
@@ -22,17 +22,30 @@ class InceptionAccessory {
         this.apiBaseUrl = `http://${this.ipAddress}/api/v1`;
         this.areaIndex = config.area;
         this.areaId = null;
-        
+
         this.service = new Service.SecuritySystem(config.name);
 
-        // Define all necessary methods before binding
+        // Ensure all methods exist before binding
+        this.getAlarmState = this.getAlarmState || this.fetchAlarmState;
+        this.setAlarmState = this.setAlarmState || this.changeAlarmState;
+        this.updateHomeKitState = this.updateHomeKitState || function (stateValue) {
+            this.log(`[DEBUG] updateHomeKitState called with state: ${stateValue}`);
+        };
+        this.lookupAreaId = this.lookupAreaId || this.fetchAreaId;
+        this.startLongPolling = this.startLongPolling || this.pollState;
+        this.pollState = this.pollState || function () {
+            this.log('[DEBUG] pollState called');
+        };
+
+        // Bind methods safely
         this.getAlarmState = this.getAlarmState.bind(this);
         this.setAlarmState = this.setAlarmState.bind(this);
         this.startLongPolling = this.startLongPolling.bind(this);
         this.pollState = this.pollState.bind(this);
         this.lookupAreaId = this.lookupAreaId.bind(this);
         this.updateHomeKitState = this.updateHomeKitState.bind(this);
-        
+
+        this.log('[DEBUG] Method bindings completed successfully.');
         this.lookupAreaId();
     }
 
@@ -40,7 +53,7 @@ class InceptionAccessory {
         return [this.service];
     }
 
-    lookupAreaId() {
+    fetchAreaId() {
         this.log('[INFO] Looking up area ID...');
         var options = {
             'method': 'GET',
@@ -108,6 +121,8 @@ class InceptionAccessory {
                 this.log('[ERROR] Failed to poll state:', error);
             } else if (response.statusCode !== 200) {
                 this.log(`[ERROR] Polling request failed with status ${response.statusCode}:`, body);
+            } else if (!body || body.trim() === "") {
+                this.log('[WARNING] Poll request returned an empty response. Retrying...');
             } else {
                 try {
                     let parsedBody = JSON.parse(body);
@@ -126,24 +141,40 @@ class InceptionAccessory {
         });
     }
 
-    updateHomeKitState(stateValue) {
-        this.log(`[INFO] Updating HomeKit state to: ${stateValue}`);
-        let homeKitState = Characteristic.SecuritySystemCurrentState.DISARMED;
-        
-        if (stateValue & 1) {
-            homeKitState = Characteristic.SecuritySystemCurrentState.AWAY_ARM;
-        } else if (stateValue & 512) {
-            homeKitState = Characteristic.SecuritySystemCurrentState.STAY_ARM;
-        } else if (stateValue & 1024) {
-            homeKitState = Characteristic.SecuritySystemCurrentState.NIGHT_ARM;
-        } else if (stateValue & 2) {
-            homeKitState = Characteristic.SecuritySystemCurrentState.ALARM_TRIGGERED;
+    fetchAlarmState(callback) {
+        this.log('[DEBUG] Fetching alarm state...');
+        if (!this.areaId) {
+            this.log('[ERROR] Cannot fetch state, area ID not set.');
+            return callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
         }
 
-        this.service.updateCharacteristic(Characteristic.SecuritySystemCurrentState, homeKitState);
+        var options = {
+            'method': 'GET',
+            'url': `${this.apiBaseUrl}/control/area/${this.areaId}/state`,
+            'headers': {
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${this.apiToken}`
+            }
+        };
+
+        request(options, (error, response, body) => {
+            if (error) {
+                this.log('[ERROR] Failed to fetch alarm state:', error);
+                return callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
+            }
+
+            try {
+                let parsedBody = JSON.parse(body);
+                this.updateHomeKitState(parsedBody.State);
+                callback(null, this.convertStateToHomeKit(parsedBody.State));
+            } catch (parseError) {
+                this.log('[ERROR] Failed to parse alarm state:', parseError);
+                callback(null, Characteristic.SecuritySystemCurrentState.DISARMED);
+            }
+        });
     }
 
-    setAlarmState(value, callback) {
+    changeAlarmState(value, callback) {
         if (!this.areaId) {
             this.log('[ERROR] Cannot change alarm state, area ID not set.');
             return callback(null);
@@ -180,5 +211,21 @@ class InceptionAccessory {
             }
             callback(null);
         });
+    }
+
+    convertStateToHomeKit(stateValue) {
+        let homeKitState = Characteristic.SecuritySystemCurrentState.DISARMED;
+
+        if (stateValue & 1) {
+            homeKitState = Characteristic.SecuritySystemCurrentState.AWAY_ARM;
+        } else if (stateValue & 512) {
+            homeKitState = Characteristic.SecuritySystemCurrentState.STAY_ARM;
+        } else if (stateValue & 1024) {
+            homeKitState = Characteristic.SecuritySystemCurrentState.NIGHT_ARM;
+        } else if (stateValue & 2) {
+            homeKitState = Characteristic.SecuritySystemCurrentState.ALARM_TRIGGERED;
+        }
+
+        return homeKitState;
     }
 }
