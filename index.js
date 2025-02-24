@@ -2,9 +2,9 @@ const axios = require('axios');
 const https = require('https');
 
 module.exports = (homebridge) => {
-    homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAlarmAccessory);
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
+    homebridge.registerAccessory('homebridge-inception-custom', 'InceptionAlarm', InceptionAlarmAccessory);
 };
 
 class InceptionAlarmAccessory {
