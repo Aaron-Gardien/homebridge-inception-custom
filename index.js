@@ -57,6 +57,13 @@ class InceptionAlarmAccessory {
                 "RequestType": "MonitorEntityStates",
                 "InputData": {
                     "stateType": "AreaState",
+                    "timeSinceUpdate": this.lastUpdateTime || "0"
+                }
+            } 
+        ];
+                "RequestType": "MonitorEntityStates",
+                "InputData": {
+                    "stateType": "AreaState",
                     "timeSinceUpdate": "0"
                 }
             }
@@ -75,8 +82,11 @@ class InceptionAlarmAccessory {
             if (response.status === 200) {
                 this.log("Received Update:", response.data);
                 this.processUpdates(response.data);
+                if (response.data.Result && response.data.Result.updateTime) {
+                    this.lastUpdateTime = response.data.Result.updateTime;
+                }
             }
-            this.monitorUpdates();
+            setTimeout(() => this.monitorUpdates(), 100);
         } catch (error) {
             this.log("Polling error:", error.message);
             setTimeout(() => this.monitorUpdates(), 5000);
