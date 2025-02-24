@@ -20,7 +20,7 @@ class InceptionAlarmAccessory {
         this.service = new Service.SecuritySystem(this.name);
         this.service
             .getCharacteristic(Characteristic.SecuritySystemCurrentState)
-            .on('get', this.getAlarmState.bind(this));
+            .on('get', (callback) => this.getAlarmState(callback));
         this.fetchAreaId().then(() => this.monitorUpdates()).catch(error => this.log("Error fetching area ID:", error));
     }
 
